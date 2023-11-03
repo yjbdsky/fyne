@@ -3,6 +3,7 @@ package repository
 import (
 	"bufio"
 	"mime"
+	"os"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
@@ -34,7 +35,9 @@ func (u *uri) MimeType() string {
 	mimeTypeFull := mime.TypeByExtension(u.Extension())
 	if mimeTypeFull == "" {
 		mimeTypeFull = "text/plain"
-
+		if f, err := os.Stat(u.path); err == nil && f.IsDir() {
+			return "dir"
+		}
 		repo, err := ForURI(u)
 		if err != nil {
 			return "application/octet-stream"

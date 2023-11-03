@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/driver/desktop"
@@ -30,6 +31,8 @@ type Tree struct {
 	OnSelected     func(uid TreeNodeID)                                      `json:"-"` // Called when the Node with the given TreeNodeID is selected.
 	OnUnselected   func(uid TreeNodeID)                                      `json:"-"` // Called when the Node with the given TreeNodeID is unselected.
 	UpdateNode     func(uid TreeNodeID, branch bool, node fyne.CanvasObject) `json:"-"` // Called to update the given CanvasObject to represent the data at the given TreeNodeID
+	Menu           func(uid TreeNodeID, branch bool) *fyne.Menu
+	NoIcon         bool
 
 	branchMinSize fyne.Size
 	leafMinSize   fyne.Size
@@ -117,9 +120,9 @@ func (t *Tree) CreateRenderer() fyne.WidgetRenderer {
 
 // IsBranchOpen returns true if the branch with the given TreeNodeID is expanded.
 func (t *Tree) IsBranchOpen(uid TreeNodeID) bool {
-	if uid == t.Root {
-		return true // Root is always open
-	}
+	//if uid == t.Root {
+	//	return true // Root is always open
+	//}
 	t.ensureOpenMap()
 	t.propertyLock.RLock()
 	defer t.propertyLock.RUnlock()
@@ -692,7 +695,8 @@ func (n *treeNode) CreateRenderer() fyne.WidgetRenderer {
 }
 
 func (n *treeNode) Indent() float32 {
-	return float32(n.depth) * (theme.IconInlineSize() + theme.Padding())
+	return float32(n.depth) * (theme.IconInlineSize()/2 + theme.Padding())
+	//return float32(n.depth) * (theme.IconInlineSize()/2 + theme.Padding())
 }
 
 // MouseIn is called when a desktop pointer enters the widget
@@ -713,6 +717,23 @@ func (n *treeNode) MouseOut() {
 
 func (n *treeNode) Tapped(*fyne.PointEvent) {
 	n.tree.Select(n.uid)
+	n.tree.ToggleBranch(n.uid)
+}
+func (n *treeNode) TappedSecondary(pe *fyne.PointEvent) {
+	super := n.super()
+	test := fyne.NewMenuItem("test", func() {
+		fmt.Printf("test: %+v\n", n)
+	})
+	menu := fyne.NewMenu("", test)
+	c := fyne.CurrentApp().Driver().CanvasForObject(super)
+	entryPos := fyne.CurrentApp().Driver().AbsolutePositionForObject(super)
+	popUpPos := entryPos.Add(fyne.NewPos(pe.Position.X, pe.Position.Y))
+	pm := NewPopUpMenu(menu, c)
+	if n.tree.Menu != nil {
+		pm = NewPopUpMenu(n.tree.Menu(n.uid, n.isBranch), c)
+	}
+	pm.ShowAtPosition(popUpPos)
+	//i.tree.ToggleBranch(i.uid)
 }
 
 func (n *treeNode) partialRefresh() {
@@ -746,7 +767,7 @@ func (r *treeNodeRenderer) Layout(size fyne.Size) {
 		r.treeNode.icon.Move(fyne.NewPos(x, y))
 		r.treeNode.icon.Resize(fyne.NewSize(theme.IconInlineSize(), size.Height))
 	}
-	x += theme.IconInlineSize()
+	//x += theme.IconInlineSize()
 	x += theme.Padding()
 	if r.treeNode.content != nil {
 		r.treeNode.content.Move(fyne.NewPos(x, y))
@@ -811,10 +832,12 @@ func newBranch(tree *Tree, content fyne.CanvasObject) (b *branch) {
 	b = &branch{
 		treeNode: &treeNode{
 			tree:     tree,
-			icon:     newBranchIcon(tree),
 			isBranch: true,
 			content:  content,
 		},
+	}
+	if !tree.NoIcon {
+		b.icon = newBranchIcon(tree)
 	}
 	b.ExtendBaseWidget(b)
 	return
@@ -822,7 +845,10 @@ func newBranch(tree *Tree, content fyne.CanvasObject) (b *branch) {
 
 func (b *branch) update(uid string, depth int) {
 	b.treeNode.update(uid, depth)
-	b.icon.(*branchIcon).update(uid, depth)
+	if b.icon != nil {
+		b.icon.(*branchIcon).update(uid, depth)
+	}
+
 }
 
 var _ fyne.Tappable = (*branchIcon)(nil)
@@ -843,9 +869,11 @@ func newBranchIcon(tree *Tree) (i *branchIcon) {
 
 func (i *branchIcon) Refresh() {
 	if i.tree.IsBranchOpen(i.uid) {
-		i.Resource = theme.MoveDownIcon()
+		//i.Resource = theme.MoveDownIcon()
+		i.Resource = theme.FolderOpenIcon()
 	} else {
-		i.Resource = theme.NavigateNextIcon()
+		//i.Resource = theme.NavigateNextIcon()
+		i.Resource = theme.FolderIcon()
 	}
 	i.Icon.Refresh()
 }
@@ -854,6 +882,19 @@ func (i *branchIcon) Tapped(*fyne.PointEvent) {
 	i.tree.ToggleBranch(i.uid)
 }
 
+//	func (i *branchIcon) TappedSecondary(pe *fyne.PointEvent) {
+//		super := i.super()
+//		test := fyne.NewMenuItem("test", func() {
+//			fmt.Printf("test: %+v\n", i)
+//		})
+//		menu := fyne.NewMenu("", test)
+//		c := fyne.CurrentApp().Driver().CanvasForObject(super)
+//		entryPos := fyne.CurrentApp().Driver().AbsolutePositionForObject(super)
+//		popUpPos := entryPos.Add(fyne.NewPos(pe.Position.X, pe.Position.Y))
+//		pm := NewPopUpMenu(menu, c)
+//		pm.ShowAtPosition(popUpPos)
+//		//i.tree.ToggleBranch(i.uid)
+//	}
 func (i *branchIcon) update(uid string, depth int) {
 	i.uid = uid
 	i.Refresh()
